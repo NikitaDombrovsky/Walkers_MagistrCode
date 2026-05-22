@@ -1,0 +1,6 @@
+{
+  "name": "Ходилка",
+  "description": "Браузерная настольная игра-ходилка с интерактивным полем, базой вопросов и бросками кубика.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
