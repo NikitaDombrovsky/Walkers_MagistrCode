@@ -275,6 +275,24 @@ export default function App() {
     });
   };
 
+  // Check if player lands on teleport cell and execute it
+  const checkAndRunTeleport = async (playerIdx: number, currentPos: number, speedMs: number): Promise<number> => {
+    let pos = currentPos;
+    if (SPECIAL_MOVES.hasOwnProperty(pos)) {
+      const jumpDestination = SPECIAL_MOVES[pos];
+      const approved = await triggerSpecialCellPrompt(pos, jumpDestination);
+
+      if (approved) {
+        setPlayers((prev) =>
+          prev.map((p, idx) => (idx === playerIdx ? { ...p, position: jumpDestination } : p))
+        );
+        pos = jumpDestination;
+        await new Promise((resolve) => setTimeout(resolve, speedMs));
+      }
+    }
+    return pos;
+  };
+
   // Movement animation sequentially cell-by-cell
   const runSequenceMovement = async (playerIndex: number, speedMs: number, amount: number, direction: "forward" | "backward") => {
     setIsMoving(true);
@@ -298,18 +316,7 @@ export default function App() {
     }
 
     // Special jump cells check
-    if (SPECIAL_MOVES.hasOwnProperty(targetPos)) {
-      const jumpDestination = SPECIAL_MOVES[targetPos];
-      const approved = await triggerSpecialCellPrompt(targetPos, jumpDestination);
-
-      if (approved) {
-        setPlayers((prev) =>
-          prev.map((p, idx) => (idx === playerIndex ? { ...p, position: jumpDestination } : p))
-        );
-        targetPos = jumpDestination;
-        await new Promise((resolve) => setTimeout(resolve, speedMs));
-      }
-    }
+    targetPos = await checkAndRunTeleport(playerIndex, targetPos, speedMs);
 
     // Event checking (Blitz, Question, Duel)
     let finalCell = targetPos;
@@ -322,6 +329,9 @@ export default function App() {
           prev.map((p, idx) => (idx === playerIndex ? { ...p, position: finalCell } : p))
         );
         await new Promise((resolve) => setTimeout(resolve, speedMs));
+
+        // Trigger teleport check if new cell is a teleport
+        finalCell = await checkAndRunTeleport(playerIndex, finalCell, speedMs);
       }
     }
 
@@ -336,6 +346,9 @@ export default function App() {
         prev.map((p, idx) => (idx === playerIndex ? { ...p, position: finalCell } : p))
       );
       await new Promise((resolve) => setTimeout(resolve, speedMs));
+
+      // Trigger teleport check if new cell is a teleport
+      finalCell = await checkAndRunTeleport(playerIndex, finalCell, speedMs);
     }
 
     if (settings.enableDuels && settings.duelCells.includes(finalCell)) {
@@ -351,6 +364,13 @@ export default function App() {
           })
         );
         await new Promise((resolve) => setTimeout(resolve, speedMs));
+
+        // Trigger teleport check for the duel winner
+        const winnerIndex = players.findIndex((p) => p.id === winnerId);
+        if (winnerIndex !== -1) {
+          const nextPos = Math.min(players[winnerIndex].position + 2, PATH_COORDINATES.length - 1);
+          await checkAndRunTeleport(winnerIndex, nextPos, speedMs);
+        }
       }
     }
 

@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { motion } from "motion/react";
 import Modal from "./Modal";
 import { ArrowRightLeft, ArrowRight, ArrowLeft } from "lucide-react";
@@ -20,6 +21,27 @@ export default function SpecialCellModal({
   onCancel,
 }: SpecialCellModalProps) {
   const isForward = endCell > startCell;
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Enter") {
+        const isFocusedInput =
+          document.activeElement?.tagName === "INPUT" ||
+          document.activeElement?.tagName === "TEXTAREA";
+
+        if (!isFocusedInput) {
+          e.preventDefault();
+          e.stopPropagation();
+          onConfirm();
+        }
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown, true);
+    return () => window.removeEventListener("keydown", handleKeyDown, true);
+  }, [isOpen, onConfirm]);
 
   return (
     <Modal isOpen={isOpen} title="Особая клетка! 🛸">

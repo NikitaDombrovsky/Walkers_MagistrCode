@@ -51,6 +51,28 @@ export default function DiceModal({ isOpen, onClose, onConfirm }: DiceModalProps
     };
   }, [isOpen]);
 
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Enter") {
+        const isFocusedInput =
+          document.activeElement?.tagName === "INPUT" ||
+          document.activeElement?.tagName === "TEXTAREA";
+
+        if (!isFocusedInput && diceResult !== null && !isRolling) {
+          e.preventDefault();
+          e.stopPropagation();
+          onConfirm(diceResult);
+          onClose();
+        }
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown, true);
+    return () => window.removeEventListener("keydown", handleKeyDown, true);
+  }, [isOpen, diceResult, isRolling, onConfirm, onClose]);
+
   const handleConfirm = () => {
     if (diceResult !== null) {
       onConfirm(diceResult);

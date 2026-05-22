@@ -54,6 +54,31 @@ export default function QuestionModal({
     }
   }, [isOpen]);
 
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Enter") {
+        const isFocusedInput =
+          document.activeElement?.tagName === "INPUT" ||
+          document.activeElement?.tagName === "TEXTAREA";
+
+        if (!isFocusedInput) {
+          e.preventDefault();
+          e.stopPropagation();
+
+          if (category !== "duel") {
+            // Simple Question / Blitz: Trigger "Верно"
+            onResolve(true);
+          }
+        }
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown, true);
+    return () => window.removeEventListener("keydown", handleKeyDown, true);
+  }, [isOpen, category, onResolve]);
+
   if (!category) return null;
   const config = CATEGORY_CONFIGS[category];
   const IconComponent = config.icon;
