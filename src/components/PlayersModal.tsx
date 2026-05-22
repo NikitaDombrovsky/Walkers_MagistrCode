@@ -61,7 +61,7 @@ export default function PlayersModal({
                     {/* Character avatar */}
                     <div
                       className="w-10 h-10 rounded border-2 border-black flex-none bg-cover bg-center"
-                      style={{ backgroundImage: `url('/assets/images/${Math.min(13, p.id)}.jpg')` || `url('/assets/images/${Math.min(13, p.id)}.png')` }}
+                      style={{ backgroundImage: `url('/assets/images/${Math.min(13, p.id)}.png')` }}
                     />
 
                     {editingIndex === idx ? (

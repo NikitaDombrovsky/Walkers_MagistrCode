@@ -23,7 +23,8 @@ import {
   CircleHelp,
   ArrowRight,
   ChevronRight,
-  Info
+  Info,
+  ArrowLeft
 } from "lucide-react";
 
 // Modal Components
@@ -137,22 +138,32 @@ export default function App() {
       }
     }
 
-    // Try to fetch external questions.json
-    fetch("/questions.json")
-      .then((r) => r.json())
-      .then((data) => {
-        if (data && (data.blitz || data.question || data.duel)) {
-          // Merge fetched questions with fallbacks to avoid blank pools
-          setQuestionsDB({
-            blitz: data.blitz && data.blitz.length > 0 ? data.blitz : DEFAULT_QUESTIONS_DB.blitz,
-            question: data.question && data.question.length > 0 ? data.question : DEFAULT_QUESTIONS_DB.question,
-            duel: data.duel && data.duel.length > 0 ? data.duel : DEFAULT_QUESTIONS_DB.duel,
-          });
-        }
-      })
-      .catch((err) => {
-        console.log("questions.json не найден или содержит ошибки. Используем встроенный список готовых вопросов.", err);
-      });
+    // Load questions from localStorage if available, otherwise fetch/fallback
+    const savedQuestions = localStorage.getItem("gameQuestionsDB");
+    if (savedQuestions) {
+      try {
+        setQuestionsDB(JSON.parse(savedQuestions));
+      } catch (e) {
+        console.error("Ошибка чтения сохраненных вопросов", e);
+      }
+    } else {
+      // Try to fetch external questions.json
+      fetch("/questions.json")
+        .then((r) => r.json())
+        .then((data) => {
+          if (data && (data.blitz || data.question || data.duel)) {
+            // Merge fetched questions with fallbacks to avoid blank pools
+            setQuestionsDB({
+              blitz: data.blitz && data.blitz.length > 0 ? data.blitz : DEFAULT_QUESTIONS_DB.blitz,
+              question: data.question && data.question.length > 0 ? data.question : DEFAULT_QUESTIONS_DB.question,
+              duel: data.duel && data.duel.length > 0 ? data.duel : DEFAULT_QUESTIONS_DB.duel,
+            });
+          }
+        })
+        .catch((err) => {
+          console.log("questions.json не найден или содержит ошибки. Используем встроенный список готовых вопросов.", err);
+        });
+    }
   }, []);
 
   // Sync game state to localStorage
@@ -167,6 +178,33 @@ export default function App() {
       );
     }
   }, [players, currentPlayerTurn]);
+
+  // Global keydown event to trigger dice rolling when users press Enter
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Enter") {
+        const isFocusedInput =
+          document.activeElement?.tagName === "INPUT" ||
+          document.activeElement?.tagName === "TEXTAREA";
+
+        if (
+          !isFocusedInput &&
+          !isMoving &&
+          !isDiceOpen &&
+          !isPlayersOpen &&
+          !isSettingsOpen &&
+          !questionModalOpen &&
+          !specialCellModalData &&
+          players.length > 0
+        ) {
+          e.preventDefault();
+          setIsDiceOpen(true);
+        }
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isMoving, isDiceOpen, isPlayersOpen, isSettingsOpen, questionModalOpen, specialCellModalData, players]);
 
   // Adjust scaling factor when fit screen is updated
   useEffect(() => {
@@ -392,6 +430,11 @@ export default function App() {
     localStorage.setItem("gameSettings", JSON.stringify(newSettings));
   };
 
+  const handleSaveQuestionsDB = (newQuestions: QuestionsDB) => {
+    setQuestionsDB(newQuestions);
+    localStorage.setItem("gameQuestionsDB", JSON.stringify(newQuestions));
+  };
+
   // Player helper coordinate calculation
   const getPlayerCoords = (player: Player, idx: number) => {
     const coordinates = PATH_COORDINATES[player.position] || PATH_COORDINATES[0];
@@ -415,114 +458,29 @@ export default function App() {
       {/* Top Glassmorphism Navigation Controls */}
       <header className="fixed top-0 inset-x-0 h-16 bg-white border-b-2 border-black z-50 flex items-center px-4 md:px-6 justify-between shadow-subtle-3">
         {/* Left Info: Current player and status */}
-        <div className="flex items-center gap-3">
-          <div className="flex flex-col">
-            <div className="flex items-center gap-1.5 h-5">
-              {activePlayer ? (
-                <>
-                  <span className="text-xs text-neutral-500 font-bold uppercase mr-1">Ходит:</span>
-                  <div
-                    className="w-3.5 h-3.5 rounded border border-black bg-cover bg-center"
-                    style={{ backgroundImage: `url('/assets/images/${Math.min(13, activePlayer.id)}.jpg')` }}
-                  />
-                  <span className="text-xs font-black text-black truncate max-w-[120px]">
-                    {activePlayer.name}
-                  </span>
-                </>
-              ) : (
-                <span className="text-xs text-neutral-400">Ожидание...</span>
-              )}
+        <div className="flex items-center gap-3" id="active-player-header-container">
+          {activePlayer ? (
+            <div className="flex items-center gap-2.5">
+              {/* Large player avatar on the left */}
+              <div
+                className="w-11 h-11 rounded border-2 border-black bg-cover bg-center shadow-subtle-2 flex-none"
+                style={{ backgroundImage: `url('/assets/images/${Math.min(13, activePlayer.id)}.png')` }}
+                id="active-player-header-avatar"
+              />
+              {/* Right: two rows containing tag and name */}
+              <div className="flex flex-col justify-center leading-tight">
+                <span className="text-[10px] text-neutral-500 font-extrabold uppercase tracking-wider">Ходит:</span>
+                <span className="text-sm font-black text-black truncate max-w-[140px]">
+                  {activePlayer.name}
+                </span>
+              </div>
             </div>
-          </div>
+          ) : (
+            <span className="text-xs text-neutral-400">Ожидание...</span>
+          )}
         </div>
 
-        {/* Center: Walk Controls */}
-        <div className="flex items-center gap-2 bg-white border-2 border-black p-1.5 rounded-lg shadow-subtle-3">
-          {/* Preset Buttons for steps input */}
-          <div className="hidden lg:flex gap-1">
-            {[1, 2].map((num) => (
-              <button
-                key={num}
-                onClick={() => !isMoving && setStepsInput(num)}
-                disabled={isMoving}
-                className={`w-7 h-7 flex items-center justify-center text-[11px] font-black rounded border-2 border-black cursor-pointer transition active:translate-x-[0.5px] active:translate-y-[0.5px]
-                  ${
-                    stepsInput === num
-                      ? "bg-accent-green text-black"
-                      : "bg-white hover:bg-neutral-50 text-black shadow-subtle-3"
-                  }`}
-              >
-                +{num}
-              </button>
-            ))}
-          </div>
 
-          {/* Number of steps input */}
-          <input
-            type="number"
-            min={1}
-            max={90}
-            disabled={isMoving}
-            value={stepsInput}
-            onChange={(e) => {
-              const val = e.target.value === "" ? "" : parseInt(e.target.value, 10);
-              if (val === "" || (!isNaN(val) && val >= 1)) {
-                setStepsInput(val);
-              }
-            }}
-            placeholder="0"
-            className="w-12 h-8 text-center bg-white border-2 border-black rounded-md text-sm font-black placeholder-neutral-400 text-black focus:outline-none focus:bg-neutral-50"
-          />
-
-          {/* Walk forward button */}
-          <motion.button
-            whileHover={{ scale: 1.03 }}
-            whileTap={{ scale: 0.97 }}
-            onClick={handleMoveForward}
-            disabled={isMoving || stepsInput === ""}
-            className={`h-8 px-4 rounded border-2 border-black flex items-center gap-1 text-xs font-black text-black transition cursor-pointer
-              ${
-                isMoving || stepsInput === ""
-                  ? "bg-zinc-100 text-zinc-400 border-zinc-200 cursor-not-allowed"
-                  : "bg-accent-green shadow-subtle hover:shadow-subtle-2"
-              }`}
-          >
-            <Play className="w-3.5 h-3.5 fill-current" />
-            Ход
-          </motion.button>
-
-          {/* Backward button */}
-          <motion.button
-            whileHover={{ scale: 1.03 }}
-            whileTap={{ scale: 0.97 }}
-            onClick={handleMoveBackward}
-            disabled={isMoving || stepsInput === ""}
-            className={`h-8 px-3 rounded border-2 border-black flex items-center gap-1 text-xs font-black bg-white text-black cursor-pointer transition
-              ${
-                isMoving || stepsInput === ""
-                  ? "border-neutral-200 text-neutral-300 cursor-not-allowed bg-zinc-50"
-                  : "hover:bg-neutral-50 shadow-subtle-3 hover:shadow-subtle"
-              }`}
-            title="Ход назад"
-          >
-            Назад
-          </motion.button>
-
-          <div className="w-[2px] h-6 bg-black" />
-
-          {/* Roll Dice Trigger */}
-          <motion.button
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            onClick={() => !isMoving && setIsDiceOpen(true)}
-            disabled={isMoving}
-            className={`h-8 px-3.5 gap-1.5 rounded border-2 border-black font-black text-xs flex items-center text-black bg-highlight-yellow active:scale-95 transition cursor-pointer shadow-subtle hover:shadow-subtle-2
-              ${isMoving ? "opacity-50 cursor-not-allowed" : ""}`}
-          >
-            <Dice5 className="w-4 h-4" />
-            Кубик
-          </motion.button>
-        </div>
 
         {/* Right Menu: View Scaling, Players and Settings */}
         <div className="flex items-center gap-1.5">
@@ -532,8 +490,8 @@ export default function App() {
             className={`p-2 rounded border-2 border-black transition cursor-pointer flex items-center justify-center shadow-subtle-3 active:translate-x-[0.5px] active:translate-y-[0.5px]
               ${
                 isFitToScreen
-                  ? "bg-accent-green text-black"
-                  : "bg-white text-black hover:bg-neutral-50"
+                  ? "bg-accent-green text-black hover:bg-lime-400"
+                  : "bg-card-mint text-black hover:bg-emerald-200"
               }`}
             title={isFitToScreen ? "Показать в масштабе 1:1" : "Масштабировать под экран"}
           >
@@ -544,7 +502,7 @@ export default function App() {
           <button
             onClick={() => !isMoving && setIsPlayersOpen(true)}
             disabled={isMoving}
-            className="p-2 rounded border-2 border-black bg-white text-black hover:bg-neutral-50 transition cursor-pointer shadow-subtle-3 flex items-center justify-center disabled:opacity-50"
+            className="p-2 rounded border-2 border-black bg-card-pink text-black hover:bg-fuchsia-200 transition cursor-pointer shadow-subtle-3 flex items-center justify-center disabled:opacity-50"
             title="Игроки"
           >
             <Users className="w-4 h-4" />
@@ -554,7 +512,7 @@ export default function App() {
           <button
             onClick={() => !isMoving && setIsSettingsOpen(true)}
             disabled={isMoving}
-            className="p-2 rounded border-2 border-black bg-white text-black hover:bg-neutral-50 transition cursor-pointer shadow-subtle-3 flex items-center justify-center disabled:opacity-50"
+            className="p-2 rounded border-2 border-black bg-card-lavender text-black hover:bg-violet-200 transition cursor-pointer shadow-subtle-3 flex items-center justify-center disabled:opacity-50"
             title="Настройки"
           >
             <Settings className="w-4 h-4" />
@@ -566,7 +524,7 @@ export default function App() {
           <button
             onClick={handleSkipTurn}
             disabled={isMoving || players.length === 0}
-            className="h-9 px-3.5 rounded border-2 border-black bg-white hover:bg-neutral-50 text-black text-xs font-black md:flex hidden items-center gap-1 cursor-pointer transition shadow-subtle-3 disabled:opacity-40"
+            className="h-9 px-3.5 rounded border-2 border-black bg-card-saffron hover:bg-amber-200 text-black text-xs font-black md:flex hidden items-center gap-1 cursor-pointer transition shadow-subtle-3 disabled:opacity-40"
             title="Пропустить ход"
           >
             <SkipForward className="w-3.5 h-3.5" />
@@ -577,7 +535,7 @@ export default function App() {
           <button
             onClick={handleResetGame}
             disabled={isMoving}
-            className="h-9 w-9 rounded border-2 border-black bg-white text-black hover:bg-rose-50 hover:text-rose-600 md:flex hidden items-center justify-center cursor-pointer transition shadow-subtle-3 disabled:opacity-40"
+            className="h-9 w-9 rounded border-2 border-black bg-rose-100 hover:bg-rose-200 text-black md:flex hidden items-center justify-center cursor-pointer transition shadow-subtle-3 disabled:opacity-40"
             title="Новая игра"
           >
             <RotateCcw className="w-4 h-4" />
@@ -717,7 +675,7 @@ export default function App() {
                       {/* Character image avatar fallback */}
                       <div
                         className="w-full h-full bg-cover bg-center rounded bg-blend-normal brightness-105"
-                        style={{ backgroundImage: `url('/assets/images/${Math.min(13, p.id)}.jpg')` }}
+                        style={{ backgroundImage: `url('/assets/images/${Math.min(13, p.id)}.png')` }}
                       />
 
                       {/* Display player name tooltip in board scale */}
@@ -733,7 +691,116 @@ export default function App() {
         </div>
 
         {/* Right Corner: Quick player score sheet panel */}
-        <aside className="fixed bottom-4 right-4 max-w-xs w-64 bg-white border-2 border-black rounded-lg p-4 shadow-subtle z-40">
+        <aside className="fixed bottom-4 right-4 max-w-xs w-64 bg-white border-2 border-black rounded-lg p-4 shadow-subtle z-40 flex flex-col gap-3">
+          {/* Active Player Walk Control Center */}
+          <div className="bg-neutral-50 border-2 border-black rounded-lg p-2.5 flex flex-col gap-2 shadow-inner-subtle" id="sidebar-walk-controls">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-black uppercase text-neutral-500 tracking-wider">Кубик и Ходы</span>
+              <span className="text-[10px] font-mono text-zinc-400 font-bold bg-white/80 px-1 border border-black/15 rounded">Enter ⌾</span>
+            </div>
+
+            <div className="flex items-center gap-2">
+              {/* Roll Dice Trigger - big animated icon button */}
+              <motion.button
+                whileHover={{ 
+                  rotate: [0, -8, 8, -8, 8, -4, 4, 0],
+                  scale: 1.06,
+                  transition: { duration: 0.45, ease: "easeInOut" }
+                }}
+                whileTap={{ scale: 0.95 }}
+                onClick={() => !isMoving && setIsDiceOpen(true)}
+                disabled={isMoving}
+                className={`w-12 h-12 rounded-lg border-2 border-black flex items-center justify-center text-black bg-highlight-yellow cursor-pointer shadow-subtle-2 transition-transform disabled:opacity-50 disabled:cursor-not-allowed`}
+                title="Бросить кубик (Enter)"
+                id="sidebar-dice-button"
+              >
+                <Dice5 className="w-7 h-7" />
+              </motion.button>
+
+              <div className="w-[1px] h-8 bg-black/15 mx-0.5" />
+
+              {/* Steps Input and Actions */}
+              <div className="flex items-center gap-1.5 flex-1 justify-end">
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-[9px] text-neutral-500 font-black uppercase text-center">Шаги</span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={90}
+                    disabled={isMoving}
+                    value={stepsInput}
+                    onChange={(e) => {
+                      const val = e.target.value === "" ? "" : parseInt(e.target.value, 10);
+                      if (val === "" || (!isNaN(val) && val >= 1)) {
+                        setStepsInput(val);
+                      }
+                    }}
+                    placeholder="0"
+                    className="w-11 h-7 text-center bg-white border-2 border-black rounded-md text-xs font-black placeholder-neutral-400 text-black focus:outline-none focus:bg-neutral-50"
+                  />
+                </div>
+
+                <div className="flex gap-1">
+                  {/* Backward block button (icon only) */}
+                  <motion.button
+                    whileHover={{ scale: 1.08 }}
+                    whileTap={{ scale: 0.92 }}
+                    onClick={handleMoveBackward}
+                    disabled={isMoving || stepsInput === ""}
+                    className={`w-8 h-8 rounded-md border-2 border-black flex items-center justify-center font-black bg-white text-black cursor-pointer transition
+                      ${
+                        isMoving || stepsInput === ""
+                          ? "border-neutral-200 text-neutral-300 cursor-not-allowed bg-zinc-50"
+                          : "hover:bg-neutral-50 shadow-subtle-3 hover:shadow-subtle"
+                      }`}
+                    title="Ход назад"
+                    id="sidebar-walk-backward"
+                  >
+                    <ArrowLeft className="w-4 h-4 stroke-[2.5]" />
+                  </motion.button>
+
+                  {/* Forward block button (icon only) */}
+                  <motion.button
+                    whileHover={{ scale: 1.08 }}
+                    whileTap={{ scale: 0.92 }}
+                    onClick={handleMoveForward}
+                    disabled={isMoving || stepsInput === ""}
+                    className={`w-8 h-8 rounded-md border-2 border-black flex items-center justify-center text-black transition cursor-pointer
+                      ${
+                        isMoving || stepsInput === ""
+                          ? "bg-zinc-100 text-zinc-400 border-zinc-200 cursor-not-allowed"
+                          : "bg-accent-green shadow-subtle hover:shadow-subtle-2"
+                      }`}
+                    title="Ход вперед"
+                    id="sidebar-walk-forward"
+                  >
+                    <Play className="w-4 h-4 fill-current ml-0.5" />
+                  </motion.button>
+                </div>
+              </div>
+            </div>
+
+            {/* Quick action +1 / +2 presets */}
+            <div className="flex gap-1 justify-end items-center mt-0.5">
+              <span className="text-[8px] text-neutral-400 font-extrabold uppercase mr-1">Шаг:</span>
+              {[1, 2].map((num) => (
+                <button
+                  key={num}
+                  onClick={() => !isMoving && setStepsInput(num)}
+                  disabled={isMoving}
+                  className={`px-2 py-0.5 text-[9px] font-black rounded border border-black cursor-pointer transition active:translate-y-[0.5px]
+                    ${
+                      stepsInput === num
+                        ? "bg-accent-green text-black font-extrabold"
+                        : "bg-white hover:bg-neutral-50 text-black"
+                    }`}
+                >
+                  +{num}
+                </button>
+              ))}
+            </div>
+          </div>
+
           <h3 className="text-xs font-black text-black uppercase tracking-widest flex items-center gap-1.5 border-b-2 border-black pb-2 mb-2.5">
             <Users className="w-3.5 h-3.5 text-black" />
             Список Игроков
@@ -755,7 +822,7 @@ export default function App() {
                   <div className="flex items-center gap-2.5 min-w-0">
                     <div
                       className="w-7 h-7 rounded bg-cover bg-center border border-black flex-none"
-                      style={{ backgroundImage: `url('/assets/images/${Math.min(13, p.id)}.jpg')` }}
+                      style={{ backgroundImage: `url('/assets/images/${Math.min(13, p.id)}.png')` }}
                     />
                     <span className="text-xs truncate font-black text-black">
                       {p.name}
@@ -802,6 +869,8 @@ export default function App() {
         onClose={() => setIsSettingsOpen(false)}
         settings={settings}
         onSave={handleSaveSettings}
+        questionsDB={questionsDB}
+        onSaveQuestionsDB={handleSaveQuestionsDB}
       />
 
       {/* Question / Duel Modal */}

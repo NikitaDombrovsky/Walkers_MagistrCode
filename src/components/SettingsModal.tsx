@@ -1,14 +1,28 @@
-import { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import Modal from "./Modal";
-import { GameSettings } from "../types";
-import { RotateCcw, Save, Sliders, Settings } from "lucide-react";
-import { motion } from "motion/react";
+import { GameSettings, QuestionsDB } from "../types";
+import { PRESET_MAP } from "../presetsData";
+import { 
+  RotateCcw, 
+  Save, 
+  Sliders, 
+  Settings, 
+  Upload, 
+  Download, 
+  Check, 
+  AlertTriangle, 
+  HelpCircle,
+  FileJson 
+} from "lucide-react";
+import { motion, AnimatePresence } from "motion/react";
 
 interface SettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
   settings: GameSettings;
   onSave: (settings: GameSettings) => void;
+  questionsDB: QuestionsDB;
+  onSaveQuestionsDB: (newQuestions: QuestionsDB) => void;
 }
 
 const DEFAULT_CELLS = {
@@ -17,11 +31,22 @@ const DEFAULT_CELLS = {
   duel: [29, 42, 25, 46],
 };
 
+const PRESETS_INFO = [
+  { key: "default", name: "Стандарт", desc: "Универсальный" },
+  { key: "pk", name: "ПК", desc: "Железо и Софт" },
+  { key: "games", name: "Игры", desc: "Гейминг и Лор" },
+  { key: "web", name: "Веб", desc: "HTML, CSS & JS" },
+  { key: "python", name: "Питон", desc: "Синтаксис Python" },
+  { key: "web2", name: "Веб2", desc: "React, Vite, CSS" },
+];
+
 export default function SettingsModal({
   isOpen,
   onClose,
   settings,
   onSave,
+  questionsDB,
+  onSaveQuestionsDB,
 }: SettingsModalProps) {
   const [enableBlitz, setEnableBlitz] = useState(settings.enableBlitz);
   const [enableQuestions, setEnableQuestions] = useState(settings.enableQuestions);
@@ -33,6 +58,14 @@ export default function SettingsModal({
   const [questionInput, setQuestionInput] = useState("");
   const [duelInput, setDuelInput] = useState("");
 
+  // Questions DB state management
+  const [localQuestionsDB, setLocalQuestionsDB] = useState<QuestionsDB>(questionsDB);
+  const [activePreset, setActivePreset] = useState<string>("custom");
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   useEffect(() => {
     if (isOpen) {
       setEnableBlitz(settings.enableBlitz);
@@ -42,8 +75,23 @@ export default function SettingsModal({
       setBlitzInput(settings.blitzCells.join(", "));
       setQuestionInput(settings.questionCells.join(", "));
       setDuelInput(settings.duelCells.join(", "));
+
+      setLocalQuestionsDB(questionsDB);
+      setSuccessMsg(null);
+      setErrorMsg(null);
+
+      // Determine preset key by comparing questionsCount or contents
+      const matchedKey = Object.entries(PRESET_MAP).find(([_, db]) => {
+        return (
+          db.blitz.length === questionsDB.blitz.length &&
+          db.question.length === questionsDB.question.length &&
+          db.duel.length === questionsDB.duel.length &&
+          (db.blitz[0]?.question === questionsDB.blitz[0]?.question)
+        );
+      });
+      setActivePreset(matchedKey ? matchedKey[0] : "custom");
     }
-  }, [isOpen, settings]);
+  }, [isOpen, settings, questionsDB]);
 
   const parseCells = (val: string) => {
     return val
@@ -62,6 +110,7 @@ export default function SettingsModal({
       questionCells: parseCells(questionInput),
       duelCells: parseCells(duelInput),
     });
+    onSaveQuestionsDB(localQuestionsDB);
     onClose();
   };
 
@@ -72,10 +121,84 @@ export default function SettingsModal({
     if (category === "duel") setDuelInput(defaults);
   };
 
+  // Preset Selection
+  const applyPreset = (presetKey: string) => {
+    const db = PRESET_MAP[presetKey];
+    if (db) {
+      setLocalQuestionsDB(db);
+      setActivePreset(presetKey);
+      setSuccessMsg(`Пакет вопросов "${PRESETS_INFO.find(p => p.key === presetKey)?.name}" успешно выбран!`);
+      setErrorMsg(null);
+      setTimeout(() => setSuccessMsg(null), 4000);
+    }
+  };
+
+  // Custom JSON Input handler
+  const handleJSONImport = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const text = e.target?.result as string;
+        const parsed = JSON.parse(text);
+
+        if (!parsed || (typeof parsed !== "object")) {
+          throw new Error("Неверная структура JSON");
+        }
+
+        const blitz = Array.isArray(parsed.blitz) ? parsed.blitz : [];
+        const question = Array.isArray(parsed.question) ? parsed.question : [];
+        const duel = Array.isArray(parsed.duel) ? parsed.duel : [];
+
+        if (blitz.length === 0 && question.length === 0 && duel.length === 0) {
+          throw new Error("JSON пуст или не содержит разделы blitz, question, duel");
+        }
+
+        const newlyImported: QuestionsDB = {
+          blitz: blitz.map((q: any, i: number) => ({ id: q.id || (i + 1), question: String(q.question) })),
+          question: question.map((q: any, i: number) => ({ id: q.id || (i + 1), question: String(q.question) })),
+          duel: duel.map((q: any, i: number) => ({ id: q.id || (i + 1), question: String(q.question) })),
+        };
+
+        setLocalQuestionsDB(newlyImported);
+        setActivePreset("custom");
+        setSuccessMsg(`Успешно импортировано вопросов: Блиц (${blitz.length}), Вопросы (${question.length}), Дуэли (${duel.length})!`);
+        setErrorMsg(null);
+        setTimeout(() => setSuccessMsg(null), 5000);
+      } catch (err: any) {
+        setErrorMsg(err?.message || "Неверный формат JSON файла");
+        setSuccessMsg(null);
+        setTimeout(() => setErrorMsg(null), 5000);
+      }
+    };
+    reader.readAsText(file);
+    // Reset file input so same file can be double-loaded
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  };
+
+  // JSON Export handler
+  const handleExportJSON = () => {
+    try {
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(localQuestionsDB, null, 2));
+      const downloadAnchor = document.createElement("a");
+      downloadAnchor.setAttribute("href", dataStr);
+      downloadAnchor.setAttribute("download", `board_game_questions_${activePreset}.json`);
+      document.body.appendChild(downloadAnchor);
+      downloadAnchor.click();
+      downloadAnchor.remove();
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Настройки игры ⚙️" maxWidth="max-w-md">
-      <div className="flex flex-col gap-4 text-sm max-h-[500px] overflow-y-auto pr-1">
-        {/* Switches */}
+      <div className="flex flex-col gap-4 text-sm max-h-[550px] overflow-y-auto pr-1">
+        {/* Toggle Switches */}
         <div className="bg-[#fef3c8] border-2 border-black rounded-lg p-4 flex flex-col gap-3.5 shadow-subtle-3">
           <h4 className="text-black font-black uppercase text-[11px] tracking-wider mb-1 flex items-center gap-1.5 border-b border-black/10 pb-1.5">
             <Sliders className="w-4 h-4 text-black" />
@@ -142,6 +265,98 @@ export default function SettingsModal({
             onChange={(e) => setMoveSpeed(parseInt(e.target.value, 10))}
             className="w-full h-2 bg-white border-2 border-black rounded-lg appearance-none cursor-pointer accent-black"
           />
+        </div>
+
+        {/* Dynamic Questions Database Settings Module */}
+        <div className="bg-[#dfeeff] border-2 border-black rounded-lg p-4 flex flex-col gap-3 shadow-subtle-3">
+          <h4 className="text-black font-black uppercase text-[11px] tracking-wider flex items-center gap-1.5 border-b border-black/15 pb-1.5">
+            <FileJson className="w-4 h-4 text-black" />
+            База Вопросов Викторины 🧠
+          </h4>
+
+          {/* Stats Info */}
+          <div className="text-xs bg-white/70 border-2 border-black border-dashed rounded px-3 py-2 flex justify-between font-mono font-bold text-black">
+            <span>Блиц: {localQuestionsDB.blitz.length}</span>
+            <span>Вопрос: {localQuestionsDB.question.length}</span>
+            <span>Дуэль: {localQuestionsDB.duel.length}</span>
+          </div>
+
+          {/* Presets List */}
+          <div className="flex flex-col gap-1.5 mt-0.5">
+            <span className="text-xs font-black text-black uppercase tracking-wider">Выберите Пресет:</span>
+            <div className="grid grid-cols-3 gap-1.5">
+              {PRESETS_INFO.map((pack) => {
+                const isSelected = activePreset === pack.key;
+                return (
+                  <button
+                    key={pack.key}
+                    onClick={() => applyPreset(pack.key)}
+                    className={`py-1.5 px-1 rounded-md border-2 border-black text-center transition cursor-pointer select-none active:translate-y-[0.5px]
+                      ${
+                        isSelected 
+                          ? "bg-accent-green text-black font-black shadow-subtle-2"
+                          : "bg-white text-black font-medium hover:bg-neutral-50 shadow-subtle-3"
+                      }`}
+                  >
+                    <div className="text-xs truncate font-black leading-tight">{pack.name}</div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Import/Export buttons */}
+          <div className="flex gap-2 mt-2">
+            <input 
+              type="file" 
+              ref={fileInputRef} 
+              onChange={handleJSONImport} 
+              accept=".json" 
+              className="hidden" 
+            />
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className="flex-1 py-2 px-3 bg-white border-2 border-black rounded-md text-xs font-black text-black hover:bg-neutral-50 shadow-subtle-3 active:translate-y-[0.5px] flex items-center justify-center gap-1 cursor-pointer transition"
+            >
+              <Upload className="w-3.5 h-3.5" />
+              Импорт .json
+            </button>
+            <button
+              onClick={handleExportJSON}
+              className="py-2 px-3 bg-white border-2 border-black rounded-md text-xs font-black text-black hover:bg-neutral-50 shadow-subtle-3 active:translate-y-[0.5px] flex items-center justify-center gap-1 cursor-pointer transition"
+              title="Скачать текущий набор вопросов в UTF-8 JSON"
+            >
+              <Download className="w-3.5 h-3.5" />
+              Экспорт
+            </button>
+          </div>
+
+          {/* Status feedback animation messages */}
+          <AnimatePresence mode="wait">
+            {successMsg && (
+              <motion.div
+                initial={{ opacity: 0, y: -5 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0 }}
+                className="bg-emerald-100 border-2 border-black text-emerald-800 text-xs px-2.5 py-2.5 rounded font-black flex items-center gap-1.5"
+              >
+                <Check className="w-4 h-4 text-emerald-700 flex-shrink-0" />
+                <span>{successMsg}</span>
+              </motion.div>
+            )}
+
+            {errorMsg && (
+              <motion.div
+                initial={{ opacity: 0, y: -5 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0 }}
+                className="bg-rose-100 border-2 border-black text-rose-800 text-xs px-2.5 py-1.5 rounded font-black flex items-center gap-1.5"
+              >
+                <AlertTriangle className="w-4 h-4 text-rose-700 flex-shrink-0" />
+                <span>{errorMsg}</span>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
 
         {/* Mapping setup */}

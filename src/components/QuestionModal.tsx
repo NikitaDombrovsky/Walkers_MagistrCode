@@ -29,7 +29,7 @@ const CATEGORY_CONFIGS = {
   duel: {
     label: "ДУЭЛЬ",
     bgClass: "bg-[#d2fae5]",
-    rule: "Выберите оппонента. Победитель в дуэли ходит на +2 клетки вперёд!",
+    rule: "Игрок, которому выпала дуэль, выбирает соперника в реальном мире. Ведущий отмечает его на экране. Затем они соревнуются по правилам дуэли, а ведущий отмечает победителя, который получает +2 шага вперёд!",
     icon: Swords,
   },
 };
@@ -105,7 +105,7 @@ export default function QuestionModal({
                   >
                     <div
                       className="w-10 h-10 rounded border-2 border-black mb-2 flex items-center justify-center font-bold bg-cover bg-center"
-                      style={{ backgroundImage: `url('/assets/images/${Math.min(13, p.id)}.jpg')` || `url('/assets/images/${Math.min(13, p.id)}.png')` }}
+                      style={{ backgroundImage: `url('/assets/images/${Math.min(13, p.id)}.png')` }}
                     />
                     <span className="text-sm font-black truncate max-w-full text-black">
                       {p.name}
