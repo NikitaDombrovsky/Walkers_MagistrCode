@@ -26,10 +26,10 @@ interface SettingsModalProps {
 }
 
 const DEFAULT_CELLS = {
-  blitz: [14, 22, 30, 38, 64, 70, 75, 88],
+  blitz: [7, 26, 33, 40, 64, 72, 58, 88],
   question: [50, 53, 80, 86],
-  duel: [29, 42, 25, 46],
-  help: [11, 47, 73],
+  duel: [30, 42, 25, 56],
+  help: [11, 47, 68],
   lottery: [9, 35, 60, 81],
 };
 
