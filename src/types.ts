@@ -2,16 +2,21 @@ export interface Player {
   id: number;
   name: string;
   position: number; // 0 to 89
+  finishedAt?: number; // timestamp when player reached finish, undefined if still playing
 }
 
 export interface GameSettings {
   enableDuels: boolean;
   enableQuestions: boolean;
   enableBlitz: boolean;
+  enableHelp: boolean;
+  enableLottery: boolean;
   moveSpeed: number; // in milliseconds
   blitzCells: number[];
   questionCells: number[];
   duelCells: number[];
+  helpCells: number[];
+  lotteryCells: number[];
 }
 
 export interface Question {

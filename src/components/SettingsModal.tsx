@@ -29,6 +29,8 @@ const DEFAULT_CELLS = {
   blitz: [14, 22, 30, 38, 64, 70, 75, 88],
   question: [50, 53, 80, 86],
   duel: [29, 42, 25, 46],
+  help: [11, 47, 73],
+  lottery: [9, 35, 60, 81],
 };
 
 const PRESETS_INFO = [
@@ -51,12 +53,16 @@ export default function SettingsModal({
   const [enableBlitz, setEnableBlitz] = useState(settings.enableBlitz);
   const [enableQuestions, setEnableQuestions] = useState(settings.enableQuestions);
   const [enableDuels, setEnableDuels] = useState(settings.enableDuels);
+  const [enableHelp, setEnableHelp] = useState(settings.enableHelp);
+  const [enableLottery, setEnableLottery] = useState(settings.enableLottery);
   const [moveSpeed, setMoveSpeed] = useState(settings.moveSpeed);
 
   // States for comma-separated cell lists
   const [blitzInput, setBlitzInput] = useState("");
   const [questionInput, setQuestionInput] = useState("");
   const [duelInput, setDuelInput] = useState("");
+  const [helpInput, setHelpInput] = useState("");
+  const [lotteryInput, setLotteryInput] = useState("");
 
   // Questions DB state management
   const [localQuestionsDB, setLocalQuestionsDB] = useState<QuestionsDB>(questionsDB);
@@ -71,10 +77,14 @@ export default function SettingsModal({
       setEnableBlitz(settings.enableBlitz);
       setEnableQuestions(settings.enableQuestions);
       setEnableDuels(settings.enableDuels);
+      setEnableHelp(settings.enableHelp ?? true);
+      setEnableLottery(settings.enableLottery ?? true);
       setMoveSpeed(settings.moveSpeed);
       setBlitzInput(settings.blitzCells.join(", "));
       setQuestionInput(settings.questionCells.join(", "));
       setDuelInput(settings.duelCells.join(", "));
+      setHelpInput((settings.helpCells ?? DEFAULT_CELLS.help).join(", "));
+      setLotteryInput((settings.lotteryCells ?? DEFAULT_CELLS.lottery).join(", "));
 
       setLocalQuestionsDB(questionsDB);
       setSuccessMsg(null);
@@ -105,20 +115,26 @@ export default function SettingsModal({
       enableBlitz,
       enableQuestions,
       enableDuels,
+      enableHelp,
+      enableLottery,
       moveSpeed,
       blitzCells: parseCells(blitzInput),
       questionCells: parseCells(questionInput),
       duelCells: parseCells(duelInput),
+      helpCells: parseCells(helpInput),
+      lotteryCells: parseCells(lotteryInput),
     });
     onSaveQuestionsDB(localQuestionsDB);
     onClose();
   };
 
-  const resetCategoryCells = (category: "blitz" | "question" | "duel") => {
+  const resetCategoryCells = (category: "blitz" | "question" | "duel" | "help" | "lottery") => {
     const defaults = DEFAULT_CELLS[category].join(", ");
     if (category === "blitz") setBlitzInput(defaults);
     if (category === "question") setQuestionInput(defaults);
     if (category === "duel") setDuelInput(defaults);
+    if (category === "help") setHelpInput(defaults);
+    if (category === "lottery") setLotteryInput(defaults);
   };
 
   // Preset Selection
@@ -243,6 +259,34 @@ export default function SettingsModal({
               type="checkbox"
               checked={enableDuels}
               onChange={(e) => setEnableDuels(e.target.checked)}
+              className="w-4 h-4 accent-black rounded bg-white border-2 border-black cursor-pointer"
+            />
+          </label>
+
+          {/* Help-a-friend Switch */}
+          <label className="flex items-center justify-between cursor-pointer select-none">
+            <div className="flex flex-col">
+              <span className="font-extrabold text-black text-sm">Включить ПОМОЩЬ</span>
+              <span className="text-neutral-700 text-[11px]">Притянуть любого игрока к себе</span>
+            </div>
+            <input
+              type="checkbox"
+              checked={enableHelp}
+              onChange={(e) => setEnableHelp(e.target.checked)}
+              className="w-4 h-4 accent-black rounded bg-white border-2 border-black cursor-pointer"
+            />
+          </label>
+
+          {/* Lottery Switch */}
+          <label className="flex items-center justify-between cursor-pointer select-none">
+            <div className="flex flex-col">
+              <span className="font-extrabold text-black text-sm">Включить ЛОТЕРЕЮ</span>
+              <span className="text-neutral-700 text-[11px]">Кубик от −6 до +6 — риск!</span>
+            </div>
+            <input
+              type="checkbox"
+              checked={enableLottery}
+              onChange={(e) => setEnableLottery(e.target.checked)}
               className="w-4 h-4 accent-black rounded bg-white border-2 border-black cursor-pointer"
             />
           </label>
@@ -426,6 +470,48 @@ export default function SettingsModal({
               className="bg-white border-2 border-black rounded-md px-3 py-1.5 text-black text-xs font-mono font-bold focus:outline-none focus:bg-neutral-50 shadow-subtle-3"
               placeholder="e.g. 29, 42, 25"
               disabled={!enableDuels}
+            />
+          </div>
+
+          {/* Help Cells */}
+          <div className="flex flex-col gap-1.5">
+            <div className="flex justify-between items-center text-[11px]">
+              <span className="font-extrabold text-black">Клетки ПОМОЩЬ</span>
+              <button
+                onClick={() => resetCategoryCells("help")}
+                className="text-neutral-700 hover:text-black flex items-center gap-1 font-bold cursor-pointer transition"
+              >
+                <RotateCcw className="w-3 h-3" /> Сбросить
+              </button>
+            </div>
+            <input
+              type="text"
+              value={helpInput}
+              onChange={(e) => setHelpInput(e.target.value)}
+              className="bg-white border-2 border-black rounded-md px-3 py-1.5 text-black text-xs font-mono font-bold focus:outline-none focus:bg-neutral-50 shadow-subtle-3"
+              placeholder="e.g. 11, 47, 73"
+              disabled={!enableHelp}
+            />
+          </div>
+
+          {/* Lottery Cells */}
+          <div className="flex flex-col gap-1.5">
+            <div className="flex justify-between items-center text-[11px]">
+              <span className="font-extrabold text-black">Клетки ЛОТЕРЕЯ</span>
+              <button
+                onClick={() => resetCategoryCells("lottery")}
+                className="text-neutral-700 hover:text-black flex items-center gap-1 font-bold cursor-pointer transition"
+              >
+                <RotateCcw className="w-3 h-3" /> Сбросить
+              </button>
+            </div>
+            <input
+              type="text"
+              value={lotteryInput}
+              onChange={(e) => setLotteryInput(e.target.value)}
+              className="bg-white border-2 border-black rounded-md px-3 py-1.5 text-black text-xs font-mono font-bold focus:outline-none focus:bg-neutral-50 shadow-subtle-3"
+              placeholder="e.g. 9, 35, 60"
+              disabled={!enableLottery}
             />
           </div>
         </div>
