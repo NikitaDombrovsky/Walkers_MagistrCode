@@ -60,9 +60,9 @@ export default function App() {
     enableQuestions: true,
     enableDuels: true,
     moveSpeed: 500,
-    blitzCells: [14, 22, 30, 38, 64, 70, 75, 88],
+    blitzCells: [7, 26, 33, 40, 64, 72, 58, 88],
     questionCells: [50, 53, 80, 86],
-    duelCells: [29, 42, 25, 46],
+    duelCells: [30, 42, 25, 56],
   });
 
   const [questionsDB, setQuestionsDB] = useState<QuestionsDB>(DEFAULT_QUESTIONS_DB);
