@@ -35,6 +35,7 @@ import PlayersModal from "./components/PlayersModal";
 import SettingsModal from "./components/SettingsModal";
 import HelpFriendModal from "./components/HelpFriendModal";
 import LotteryPromptModal from "./components/LotteryPromptModal";
+import VictoryModal from "./components/VictoryModal";
 
 // Player Config mapping for visual styles
 const PLAYER_CONFIGS: Record<number, { name: string; color: string; shadow: string; glowColor: string }> = {
@@ -115,6 +116,10 @@ export default function App() {
   const lotteryPromptResolveRef = useRef<((accepted: boolean) => void) | null>(null);
   const [lotteryDiceOpen, setLotteryDiceOpen] = useState(false);
   const lotteryDiceResolveRef = useRef<((val: number) => void) | null>(null);
+
+  // Victory state
+  const [victoryModalOpen, setVictoryModalOpen] = useState(false);
+  const [hasShownVictory, setHasShownVictory] = useState(false);
 
   // Load state and load questions.json on startup
   useEffect(() => {
@@ -197,6 +202,15 @@ export default function App() {
     }
   }, [players, currentPlayerTurn]);
 
+  // Auto-open victory modal as soon as the first player finishes
+  useEffect(() => {
+    const finishedPlayers = players.filter((p) => p.finishedAt);
+    if (finishedPlayers.length > 0 && !hasShownVictory && !isMoving) {
+      setVictoryModalOpen(true);
+      setHasShownVictory(true);
+    }
+  }, [players, hasShownVictory, isMoving]);
+
   // Global keydown event to trigger dice rolling when users press Enter
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -216,6 +230,7 @@ export default function App() {
           !helpModalOpen &&
           !lotteryPromptOpen &&
           !lotteryDiceOpen &&
+          !victoryModalOpen &&
           players.length > 0
         ) {
           e.preventDefault();
@@ -225,7 +240,7 @@ export default function App() {
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isMoving, isDiceOpen, isPlayersOpen, isSettingsOpen, questionModalOpen, specialCellModalData, helpModalOpen, lotteryPromptOpen, lotteryDiceOpen, players]);
+  }, [isMoving, isDiceOpen, isPlayersOpen, isSettingsOpen, questionModalOpen, specialCellModalData, helpModalOpen, lotteryPromptOpen, lotteryDiceOpen, victoryModalOpen, players]);
 
   // Adjust scaling factor when fit screen is updated
   useEffect(() => {
@@ -455,11 +470,29 @@ export default function App() {
       }
     }
 
+    // Mark finish if the player reached the last cell
+    const finishCell = PATH_COORDINATES.length - 1;
+    if (finalCell === finishCell) {
+      setPlayers((prev) =>
+        prev.map((p, idx) =>
+          idx === playerIndex && !p.finishedAt ? { ...p, finishedAt: Date.now() } : p
+        )
+      );
+    }
+
     // Next round
     setIsMoving(false);
     setStepsInput("");
     if (players.length > 0) {
-      setCurrentPlayerTurn((prev) => (prev + 1) % players.length);
+      setCurrentPlayerTurn((prev) => {
+        let next = (prev + 1) % players.length;
+        let safety = 0;
+        while (players[next]?.finishedAt && safety < players.length) {
+          next = (next + 1) % players.length;
+          safety++;
+        }
+        return next;
+      });
     }
   };
 
@@ -476,15 +509,25 @@ export default function App() {
   const handleSkipTurn = () => {
     if (isMoving || players.length === 0) return;
     setStepsInput("");
-    setCurrentPlayerTurn((prev) => (prev + 1) % players.length);
+    setCurrentPlayerTurn((prev) => {
+      let next = (prev + 1) % players.length;
+      let safety = 0;
+      while (players[next]?.finishedAt && safety < players.length) {
+        next = (next + 1) % players.length;
+        safety++;
+      }
+      return next;
+    });
   };
 
   const handleResetGame = () => {
     if (isMoving) return;
     if (confirm("Вы уверены, что хотите сбросить игроков в начало карты и начать новую игру?")) {
-      setPlayers((prev) => prev.map((p) => ({ ...p, position: 0 })));
+      setPlayers((prev) => prev.map((p) => ({ ...p, position: 0, finishedAt: undefined })));
       setCurrentPlayerTurn(0);
       setStepsInput("");
+      setHasShownVictory(false);
+      setVictoryModalOpen(false);
     }
   };
 
@@ -1062,6 +1105,23 @@ export default function App() {
             lotteryDiceResolveRef.current(val);
             lotteryDiceResolveRef.current = null;
           }
+        }}
+      />
+
+      {/* Victory modal */}
+      <VictoryModal
+        isOpen={victoryModalOpen}
+        winners={players
+          .filter((p) => p.finishedAt)
+          .sort((a, b) => (a.finishedAt || 0) - (b.finishedAt || 0))}
+        allPlayers={players}
+        onContinue={() => setVictoryModalOpen(false)}
+        onNewGame={() => {
+          setPlayers((prev) => prev.map((p) => ({ ...p, position: 0, finishedAt: undefined })));
+          setCurrentPlayerTurn(0);
+          setStepsInput("");
+          setHasShownVictory(false);
+          setVictoryModalOpen(false);
         }}
       />
     </div>
