@@ -33,6 +33,8 @@ import QuestionModal from "./components/QuestionModal";
 import SpecialCellModal from "./components/SpecialCellModal";
 import PlayersModal from "./components/PlayersModal";
 import SettingsModal from "./components/SettingsModal";
+import HelpFriendModal from "./components/HelpFriendModal";
+import LotteryPromptModal from "./components/LotteryPromptModal";
 
 // Player Config mapping for visual styles
 const PLAYER_CONFIGS: Record<number, { name: string; color: string; shadow: string; glowColor: string }> = {
@@ -51,19 +53,25 @@ const PLAYER_CONFIGS: Record<number, { name: string; color: string; shadow: stri
   13: { name: "Игрок 13", color: "from-violet-600 to-purple-800", shadow: "shadow-violet-600/50", glowColor: "rgba(124, 58, 237, 0.6)" },
 };
 
+const DEFAULT_GAME_SETTINGS: GameSettings = {
+  enableBlitz: true,
+  enableQuestions: true,
+  enableDuels: true,
+  enableHelp: true,
+  enableLottery: true,
+  moveSpeed: 500,
+  blitzCells: [7, 26, 33, 40, 64, 72, 58, 88],
+  questionCells: [50, 53, 80, 86],
+  duelCells: [30, 42, 25, 56],
+  helpCells: [11, 47, 68],
+  lotteryCells: [9, 35, 60, 81],
+};
+
 export default function App() {
   // Game state
   const [players, setPlayers] = useState<Player[]>([]);
   const [currentPlayerTurn, setCurrentPlayerTurn] = useState(0);
-  const [settings, setSettings] = useState<GameSettings>({
-    enableBlitz: true,
-    enableQuestions: true,
-    enableDuels: true,
-    moveSpeed: 500,
-    blitzCells: [7, 26, 33, 40, 64, 72, 58, 88],
-    questionCells: [50, 53, 80, 86],
-    duelCells: [30, 42, 25, 56],
-  });
+  const [settings, setSettings] = useState<GameSettings>(DEFAULT_GAME_SETTINGS);
 
   const [questionsDB, setQuestionsDB] = useState<QuestionsDB>(DEFAULT_QUESTIONS_DB);
   const [usedQuestions, setUsedQuestions] = useState<Record<string, number[]>>({
@@ -97,6 +105,16 @@ export default function App() {
     end: number;
   } | null>(null);
   const specialCellResolveRef = useRef<((approved: boolean) => void) | null>(null);
+
+  // Help-a-friend modal state
+  const [helpModalOpen, setHelpModalOpen] = useState(false);
+  const helpResolveRef = useRef<((chosenFriendId: number | null) => void) | null>(null);
+
+  // Lottery state
+  const [lotteryPromptOpen, setLotteryPromptOpen] = useState(false);
+  const lotteryPromptResolveRef = useRef<((accepted: boolean) => void) | null>(null);
+  const [lotteryDiceOpen, setLotteryDiceOpen] = useState(false);
+  const lotteryDiceResolveRef = useRef<((val: number) => void) | null>(null);
 
   // Load state and load questions.json on startup
   useEffect(() => {
@@ -132,7 +150,7 @@ export default function App() {
     const savedSettings = localStorage.getItem("gameSettings");
     if (savedSettings) {
       try {
-        setSettings(JSON.parse(savedSettings));
+        setSettings({ ...DEFAULT_GAME_SETTINGS, ...JSON.parse(savedSettings) });
       } catch (e) {
         console.error("Ошибка чтения настроек", e);
       }
@@ -195,6 +213,9 @@ export default function App() {
           !isSettingsOpen &&
           !questionModalOpen &&
           !specialCellModalData &&
+          !helpModalOpen &&
+          !lotteryPromptOpen &&
+          !lotteryDiceOpen &&
           players.length > 0
         ) {
           e.preventDefault();
@@ -204,7 +225,7 @@ export default function App() {
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isMoving, isDiceOpen, isPlayersOpen, isSettingsOpen, questionModalOpen, specialCellModalData, players]);
+  }, [isMoving, isDiceOpen, isPlayersOpen, isSettingsOpen, questionModalOpen, specialCellModalData, helpModalOpen, lotteryPromptOpen, lotteryDiceOpen, players]);
 
   // Adjust scaling factor when fit screen is updated
   useEffect(() => {
@@ -272,6 +293,27 @@ export default function App() {
       questionResolveRef.current = (correct: boolean, duelWinnerId?: number | null) => {
         resolve({ correct, winnerId: duelWinnerId });
       };
+    });
+  };
+
+  const triggerHelpFriendPrompt = (): Promise<number | null> => {
+    return new Promise((resolve) => {
+      helpResolveRef.current = resolve;
+      setHelpModalOpen(true);
+    });
+  };
+
+  const triggerLotteryPrompt = (): Promise<boolean> => {
+    return new Promise((resolve) => {
+      lotteryPromptResolveRef.current = resolve;
+      setLotteryPromptOpen(true);
+    });
+  };
+
+  const triggerLotteryRoll = (): Promise<number> => {
+    return new Promise((resolve) => {
+      lotteryDiceResolveRef.current = resolve;
+      setLotteryDiceOpen(true);
     });
   };
 
@@ -370,6 +412,45 @@ export default function App() {
         if (winnerIndex !== -1) {
           const nextPos = Math.min(players[winnerIndex].position + 2, PATH_COORDINATES.length - 1);
           await checkAndRunTeleport(winnerIndex, nextPos, speedMs);
+        }
+      }
+    }
+
+    if (settings.enableHelp && settings.helpCells.includes(finalCell)) {
+      const otherCount = players.filter((_, i) => i !== playerIndex).length;
+      if (otherCount > 0) {
+        const chosenFriendId = await triggerHelpFriendPrompt();
+        if (chosenFriendId !== null) {
+          const friendIndex = players.findIndex((p) => p.id === chosenFriendId);
+          if (friendIndex !== -1 && friendIndex !== playerIndex) {
+            setPlayers((prev) =>
+              prev.map((p, idx) => (idx === friendIndex ? { ...p, position: finalCell } : p))
+            );
+            await new Promise((resolve) => setTimeout(resolve, speedMs));
+            await checkAndRunTeleport(friendIndex, finalCell, speedMs);
+          }
+        }
+      }
+    }
+
+    if (settings.enableLottery && settings.lotteryCells.includes(finalCell)) {
+      const accepted = await triggerLotteryPrompt();
+      if (accepted) {
+        const lotteryValue = await triggerLotteryRoll();
+        if (lotteryValue !== 0) {
+          const newPos = Math.max(0, Math.min(finalCell + lotteryValue, PATH_COORDINATES.length - 1));
+          const lotteryStep = lotteryValue > 0 ? 1 : -1;
+          let lotteryCurrent = finalCell;
+
+          while (lotteryCurrent !== newPos) {
+            lotteryCurrent += lotteryStep;
+            setPlayers((prev) =>
+              prev.map((p, idx) => (idx === playerIndex ? { ...p, position: lotteryCurrent } : p))
+            );
+            await new Promise((resolve) => setTimeout(resolve, speedMs));
+          }
+
+          finalCell = await checkAndRunTeleport(playerIndex, newPos, speedMs);
         }
       }
     }
@@ -594,6 +675,8 @@ export default function App() {
                 const isBlitz = settings.enableBlitz && settings.blitzCells.includes(i);
                 const isQuestion = settings.enableQuestions && settings.questionCells.includes(i);
                 const isDuel = settings.enableDuels && settings.duelCells.includes(i);
+                const isHelp = settings.enableHelp && settings.helpCells.includes(i);
+                const isLottery = settings.enableLottery && settings.lotteryCells.includes(i);
                 const isSpecial = SPECIAL_MOVES.hasOwnProperty(i);
 
                 // Get custom styles for cell highlights based on types
@@ -613,6 +696,14 @@ export default function App() {
                   cellGlow = "border-2 border-black bg-[#d2fae5] shadow-subtle-3 text-black";
                   indicatorName = "ДУЭЛЬ";
                   indicatorColor = "text-[#047857]";
+                } else if (isHelp) {
+                  cellGlow = "border-2 border-black bg-[#ffe4e6] shadow-subtle-3 text-black";
+                  indicatorName = "ПОМОЩЬ";
+                  indicatorColor = "text-[#be123c]";
+                } else if (isLottery) {
+                  cellGlow = "border-2 border-black bg-[#fff3c4] shadow-subtle-3 text-black";
+                  indicatorName = "ЛОТЕРЕЯ";
+                  indicatorColor = "text-[#ca8a04]";
                 } else if (isSpecial) {
                   cellGlow = "border-2 border-black bg-[#e0f2fe] shadow-subtle-3 text-black";
                   indicatorName = "ТЕЛЕПОРТ";
@@ -658,6 +749,8 @@ export default function App() {
                             {isBlitz && "Промт-вопрос с мгновенной наградой +1 шаг вперёд."}
                             {isQuestion && "Бонус +2 шага при успехе, либо штраф −1 шаг при провале!"}
                             {isDuel && "Интерактивная дуэль с любым игроком на поле!"}
+                            {isHelp && "Можно притянуть любого другого игрока на свою клетку."}
+                            {isLottery && "Рискованный бросок кубика от −6 до +6 шагов."}
                             {isSpecial && `Трамплин! Перебрасывает фишку сразу на клетку ${SPECIAL_MOVES[i]}`}
                           </p>
                         </motion.div>
@@ -927,6 +1020,47 @@ export default function App() {
           if (specialCellResolveRef.current) {
             specialCellResolveRef.current(false);
             specialCellResolveRef.current = null;
+          }
+        }}
+      />
+
+      {/* Help-a-friend Modal */}
+      <HelpFriendModal
+        isOpen={helpModalOpen}
+        activePlayer={players[currentPlayerTurn] || { id: 1, name: "Игрок", position: 0 }}
+        otherPlayers={players.filter((_, i) => i !== currentPlayerTurn)}
+        onResolve={(chosenFriendId) => {
+          setHelpModalOpen(false);
+          if (helpResolveRef.current) {
+            helpResolveRef.current(chosenFriendId);
+            helpResolveRef.current = null;
+          }
+        }}
+      />
+
+      {/* Lottery: choose to risk it */}
+      <LotteryPromptModal
+        isOpen={lotteryPromptOpen}
+        activePlayer={players[currentPlayerTurn] || { id: 1, name: "Игрок", position: 0 }}
+        onResolve={(accepted) => {
+          setLotteryPromptOpen(false);
+          if (lotteryPromptResolveRef.current) {
+            lotteryPromptResolveRef.current(accepted);
+            lotteryPromptResolveRef.current = null;
+          }
+        }}
+      />
+
+      {/* Lottery dice: -6..+6 */}
+      <DiceModal
+        isOpen={lotteryDiceOpen}
+        mode="lottery"
+        onClose={() => setLotteryDiceOpen(false)}
+        onConfirm={(val) => {
+          setLotteryDiceOpen(false);
+          if (lotteryDiceResolveRef.current) {
+            lotteryDiceResolveRef.current(val);
+            lotteryDiceResolveRef.current = null;
           }
         }}
       />
